@@ -762,6 +762,7 @@
     osc.start(t);
     osc.stop(t + 0.05);
   }
+  var audioUnlocked = false;
   function startTicking() {
     if (!actx) {
       try { actx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -771,6 +772,18 @@
       for (var i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     }
     if (actx.state === "suspended") actx.resume();
+    /* iOS WebKit: audio must actually PLAY inside the first touch event —
+       fire a one-sample silent buffer synchronously; retry until running */
+    if (!audioUnlocked) {
+      try {
+        var ub = actx.createBuffer(1, 1, 22050);
+        var us = actx.createBufferSource();
+        us.buffer = ub;
+        us.connect(actx.destination);
+        us.start(0);
+      } catch (e) {}
+      if (actx.state === "running") audioUnlocked = true;
+    }
   }
   /* the hand steps 6° on the same timer as the sound, so they never drift */
   var hand = document.querySelector(".clockring .hand");
@@ -780,11 +793,26 @@
     hand.style.transform = "rotate(" + handAngle + "deg)";
     tickOnce();
   }, 1000);
+  /* iOS WebKit blocks speech that starts outside a touch event (ours starts
+     on a timer) — speak a silent utterance inside the first gesture to unlock */
+  var speechUnlocked = false;
+  function unlockSpeech() {
+    if (speechUnlocked || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+    speechUnlocked = true;
+    try {
+      speechSynthesis.resume();
+      var u = new SpeechSynthesisUtterance(" ");
+      u.volume = 0;
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
   /* browsers refuse audio until the first user gesture — grab the earliest
      one possible, and keep retrying so ticking starts on the title screen */
   startTicking();
   ["pointerdown", "pointerup", "touchstart", "touchend", "keydown", "click"]
-    .forEach(function (ev) { addEventListener(ev, startTicking, true); });
+    .forEach(function (ev) {
+      addEventListener(ev, function () { startTicking(); unlockSpeech(); }, true);
+    });
   setInterval(function () {
     if (actx && actx.state === "suspended") actx.resume();
   }, 500);
@@ -834,6 +862,7 @@
     u.pitch = 0.8;
     u.onend = finish;
     u.onerror = finish;
+    try { speechSynthesis.resume(); } catch (e) {} /* iOS sometimes leaves it paused */
     speechSynthesis.speak(u);
     setTimeout(finish, 1500 + text.length * 110); /* safety if onend never fires */
   }
