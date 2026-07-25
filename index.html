@@ -187,16 +187,6 @@
     0%, 100% { box-shadow: 0 0 0 rgba(211, 169, 92, 0); }
     50% { box-shadow: 0 0 48px rgba(211, 169, 92, 0.38); }
   }
-  .gate-note {
-    margin-top: 6vmin;
-    font-family: var(--caps);
-    font-size: clamp(0.6rem, 1.2vmin, 0.85rem);
-    letter-spacing: 0.4em;
-    text-indent: 0.4em;
-    text-transform: uppercase;
-    color: var(--whisper);
-  }
-
   .crest {
     width: clamp(150px, 30vmin, 300px);
     margin-bottom: 3vmin;
@@ -508,9 +498,8 @@
 
 <!-- SCREEN 0 : gate — the first touch here unlocks audio for the whole session -->
 <section class="screen active" id="screen-gate">
-  <p class="eyebrow">The Land of Mirrors</p>
+  <p class="eyebrow">Dominion of Time</p>
   <button class="btn btn-enter" id="btn-enter">Enter</button>
-  <p class="gate-note">Best experienced with sound</p>
 </section>
 
 <!-- SCREEN 1 -->
@@ -805,6 +794,38 @@
     osc.start(t);
     osc.stop(t + 0.05);
   }
+  /* synthesized applause: a dense shower of tiny random claps */
+  function playApplause() {
+    if (!actx || actx.state !== "running" || !noiseBuf) return;
+    var t0 = actx.currentTime + 0.05;
+    var dur = 3.0;
+    var master = actx.createGain();
+    master.gain.setValueAtTime(0.0001, t0);
+    master.gain.linearRampToValueAtTime(2.4, t0 + 0.3);
+    master.gain.setValueAtTime(2.4, t0 + dur - 1.0);
+    master.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    master.connect(actx.destination);
+    for (var i = 0; i < 170; i++) {
+      var t = t0 + Math.random() * dur;
+      var src = actx.createBufferSource();
+      src.buffer = noiseBuf;
+      var bp = actx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 900 + Math.random() * 1900;
+      bp.Q.value = 1.5;
+      var g = actx.createGain();
+      var amp = 0.07 + Math.random() * 0.2;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(amp, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+      src.connect(bp);
+      bp.connect(g);
+      g.connect(master);
+      src.start(t);
+      src.stop(t + 0.06);
+    }
+  }
+
   var audioUnlocked = false;
   function startTicking() {
     if (!actx) {
@@ -948,6 +969,7 @@
       if (li.classList.contains("wrong") || li.classList.contains("chosen")) return;
       if (li.dataset.key === "3") {
         stopSequence(); /* silence the narrator on the winning pick */
+        playApplause();
         li.classList.add("chosen");
         flash.classList.remove("go");
         void flash.offsetWidth;
